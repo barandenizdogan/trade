@@ -1,0 +1,25 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("RSI", overlay=true, margin_long=100, margin_short=100)
+
+// Define the length of the RSI
+length = input.int(title="Length", defval=14)
+
+// Calculate the gain and loss over the defined length
+gain = ta.change(close) > 0 ? ta.change(close) : 0
+loss = ta.change(close) < 0 ? -ta.change(close) : 0
+ 
+// Calculate the average gain and average loss over the defined length
+avgGain = ta.sma(gain, length)
+avgLoss = ta.sma(loss, length)
+
+// Calculate the relative strength
+relStrength = avgGain / avgLoss
+
+// Calculate the RSI
+rsi = 100 - (100 / (1 + relStrength))
+
+// Plot the RSI on the chart
+plot(rsi, color=color.blue, linewidth=2, title="RSI")

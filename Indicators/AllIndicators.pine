@@ -1,0 +1,68 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("My strategy", overlay=true, margin_long=100, margin_short=100)
+
+// Define symbol and time frame
+symbol = "BTC/USD"
+tf = timeframe.daily
+
+// Define MA parameters
+ma_length = 50
+ma_type = avgType.simple
+
+// Calculate Moving Average
+ma = sma(close, ma_length)
+
+// Define Bollinger Bands parameters
+bb_length = 20
+bb_mult = 2
+
+// Calculate Bollinger Bands
+bb_upper = ma + stdev(close, bb_length) * bb_mult
+bb_lower = ma - stdev(close, bb_length) * bb_mult
+
+// Plot Bollinger Bands
+plot(ma, color = #FFA500, linewidth = 2, title = "Moving Average")
+band(bb_upper, bb_lower, color = #808080, transp = 30)
+
+// Define RSI parameters
+rsi_length = 14
+
+// Calculate Relative Strength Index
+rsi = rsi(close, rsi_length)
+
+// Plot Relative Strength Index
+plot(rsi, color = #0000FF, linewidth = 2, title = "Relative Strength Index")
+
+// Define MACD parameters
+macd_length1 = 12
+macd_length2 = 26
+macd_signal = 9
+
+// Calculate Moving Average Convergence Divergence
+macd, macd_signal, _ = macd(close, macd_length1, macd_length2, macd_signal)
+
+// Plot Moving Average Convergence Divergence
+plot(macd, color = #00FF00, linewidth = 2, title = "MACD")
+plot(macd_signal, color = #FF00FF, linewidth = 2, title = "MACD Signal")
+
+// Define Ichimoku Cloud parameters
+tenkan = 9
+kijun = 26
+senkou_a = 52
+senkou_b = 26
+
+// Calculate Ichimoku Cloud
+tenkan_sen = avg(high, tenkan) + avg(low, tenkan)
+kijun_sen = avg(high, kijun) + avg(low, kijun)
+senkou_a = (tenkan_sen + kijun_sen) / 2
+senkou_b = avg(high, senkou_b) + avg(low, senkou_b)
+chikou = close[26]
+
+// Plot Ichimoku Cloud
+fill(senkou_a > senkou_b ? senkou_a : senkou_b, senkou_a < senkou_b ? senkou_a : senkou_b, color = #808080, transp = 30)
+plot(tenkan_sen, color = #FFA500, linewidth = 2, title = "Tenkan-sen")
+plot(kijun_sen, color = #0000FF, linewidth = 2, title = "Kijun-sen")
+plot(senkou_a, color = #00FF00, linewidth

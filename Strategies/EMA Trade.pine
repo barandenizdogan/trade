@@ -1,0 +1,340 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("Mean Reversion Strategy That Includes EMA and MACD", shorttitle="MRC",overlay=true, currency=currency.USD, initial_capital=10, default_qty_type=strategy.cash, default_qty_value=100, commission_type=strategy.commission.cash_per_order, commission_value=0.1)
+
+//************************************************************************************************************
+// Parameter
+//************************************************************************************************************
+
+var float buyPriceLong  = 0
+var float buyPriceShort = 0
+
+indiSet = input(false, '═════════ MRC Parameter ════════')
+source = input(hlcc4, title='Price Source')
+type = input.string('SuperSmoother', title='Filter Type', options=['SuperSmoother', 'Ehlers EMA', 'Gaussian', 'Butterworth', 'BandStop', 'SMA', 'EMA', 'RMA'])
+length = input.int(200, title='Lookback Period', minval=1)
+innermult = input.float(2.0, title='Inner Channel Size Multiplier', minval=0.1)
+outermult = input.float(2.415, title='Outer Channel Size Multiplier', minval=0.1)
+
+ChartSet = input(false, '═════════ Chart Setting ════════')
+drawchannel = input(true, title='Draw Channel')
+exittype = input.string('Mean Line', title='Exit Type', options=['Mean Line', 'OtherOne'])
+
+MACDSet = input(false, '═════════ MACD Setting ════════')
+useMACD = input(false, title='Use MACD?')
+macd_fastlength = input.int(8, title='MACD Fast Length', step = 1, minval=1)
+macd_slowlength = input.int(26, title='MACD Slow Length', step = 1, minval=1)
+sourceMACD = input(ohlc4, title='MACD Price Source')
+macd_siglength = input.int(9, title='MACD Signal Length', step = 1, minval=1)
+macdoscilation = input.string('EMA', title='MACD Oscilation', options=['EMA', 'SMA'])
+useBonus = input(false, title='Use Bonus Indicator?')
+bonusindicator = input.string('None', title='Bonus Indicator', options=['None', 'EMA']) 
+bonusindicatorlength= input.int(20, title='Bonus Length', step = 1, minval=1)
+stoploss = input(false, '═════════ Stop Loss ════════')
+
+useStopLoss = input(false, title='Use Stop Loss')
+i_stopPercent = input.float(title = "Stop Loss Percent", defval = 0.002, step = 0.0001)
+
+takeprofit = input(false, '═════════ Take Profit ════════')
+useTakeProfit = input(false, title='Use Take Profit')
+i_takePercent = input.float(title = "Take Profit Percent", defval = 0.01, step = 0.001)
+
+
+//************************************************************************************************************
+// Functions Start {
+//************************************************************************************************************
+var pi = 2 * math.asin(1)
+var mult = pi * innermult
+var mult2 = pi * outermult
+var gradsize = 0.5
+
+//-----------------------
+// Ehler SwissArmyKnife Function
+//-----------------------
+SAK_smoothing(_type, _src, _length) =>
+    c0 = 1.0
+    c1 = 0.0
+    b0 = 1.0
+    b1 = 0.0
+    b2 = 0.0
+    a1 = 0.0
+    a2 = 0.0
+    alpha = 0.0
+    beta = 0.0
+    gamma = 0.0
+    cycle = 2 * pi / _length
+
+    if _type == 'Ehlers EMA'
+        alpha := (math.cos(cycle) + math.sin(cycle) - 1) / math.cos(cycle)
+        b0 := alpha
+        a1 := 1 - alpha
+        a1
+    if _type == 'Gaussian'
+        beta := 2.415 * (1 - math.cos(cycle))
+        alpha := -beta + math.sqrt(beta * beta + 2 * beta)
+        c0 := alpha * alpha
+        a1 := 2 * (1 - alpha)
+        a2 := -(1 - alpha) * (1 - alpha)
+        a2
+    if _type == 'Butterworth'
+        beta := 2.415 * (1 - math.cos(cycle))
+        alpha := -beta + math.sqrt(beta * beta + 2 * beta)
+        c0 := alpha * alpha / 4
+        b1 := 2
+        b2 := 1
+        a1 := 2 * (1 - alpha)
+        a2 := -(1 - alpha) * (1 - alpha)
+        a2
+    if _type == 'BandStop'
+        beta := math.cos(cycle)
+        gamma := 1 / math.cos(cycle * 2 * 0.1)  // delta default to 0.1. Acceptable delta -- 0.05<d<0.5
+        alpha := gamma - math.sqrt(gamma * gamma - 1)
+        c0 := (1 + alpha) / 2
+        b1 := -2 * beta
+        b2 := 1
+        a1 := beta * (1 + alpha)
+        a2 := -alpha
+        a2
+    if _type == 'SMA'
+        c1 := 1 / _length
+        b0 := 1 / _length
+        a1 := 1
+        a1
+    if _type == 'EMA'
+        alpha := 2 / (_length + 1)
+        b0 := alpha
+        a1 := 1 - alpha
+        a1
+    if _type == 'RMA'
+        alpha := 1 / _length
+        b0 := alpha
+        a1 := 1 - alpha
+        a1
+
+    _Input = _src
+    _Output = 0.0
+    _Output := c0 * (b0 * _Input + b1 * nz(_Input[1]) + b2 * nz(_Input[2])) + a1 * nz(_Output[1]) + a2 * nz(_Output[2]) - c1 * nz(_Input[_length])
+    _Output
+
+//-----------------------
+// SuperSmoother Function
+//-----------------------
+supersmoother(_src, _length) =>
+    s_a1 = math.exp(-math.sqrt(2) * pi / _length)
+    s_b1 = 2 * s_a1 * math.cos(math.sqrt(2) * pi / _length)
+    s_c3 = -math.pow(s_a1, 2)
+    s_c2 = s_b1
+    s_c1 = 1 - s_c2 - s_c3
+    ss = 0.0
+    ss := s_c1 * _src + s_c2 * nz(ss[1], _src[1]) + s_c3 * nz(ss[2], _src[2])
+    ss
+
+//-----------------------
+// Auto TimeFrame Function
+//-----------------------
+// ————— Converts current chart resolution into a float minutes value.
+f_resInMinutes() =>
+    _resInMinutes = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 24 : timeframe.isweekly ? 60. * 24 * 7 : timeframe.ismonthly ? 60. * 24 * 30.4375 : na)
+    _resInMinutes
+
+get_tf(_lvl) =>
+    y = f_resInMinutes()
+    z = timeframe.period
+    
+//-----------------------
+// Mean Reversion Channel Function
+//-----------------------
+get_mrc() =>
+    v_condition = 0
+    v_meanline = source
+    v_meanrange = supersmoother(ta.tr, length)
+
+    //-- Get Line value
+    if type == 'SuperSmoother'
+        v_meanline := supersmoother(source, length)
+        v_meanline
+
+    if type != 'SuperSmoother'
+        v_meanline := SAK_smoothing(type, source, length)
+        v_meanline
+
+    v_upband1 = v_meanline + v_meanrange * mult
+    v_loband1 = v_meanline - v_meanrange * mult
+    v_upband2 = v_meanline + v_meanrange * mult2
+    v_loband2 = v_meanline - v_meanrange * mult2
+
+    //-- Check Condition
+    if close > v_meanline
+        v_upband2_1 = v_upband2 + v_meanrange * gradsize * 4
+        v_upband2_9 = v_upband2 + v_meanrange * gradsize * -4
+        if high >= v_upband2_9 and high < v_upband2
+            v_condition := 1
+            v_condition
+        else if high >= v_upband2 and high < v_upband2_1
+            v_condition := 2
+            v_condition
+        else if high >= v_upband2_1
+            v_condition := 3
+            v_condition
+        else if close <= v_meanline + v_meanrange
+            v_condition := 4
+            v_condition
+        else
+            v_condition := 5
+            v_condition
+
+    if close < v_meanline
+        v_loband2_1 = v_loband2 - v_meanrange * gradsize * 4
+        v_loband2_9 = v_loband2 - v_meanrange * gradsize * -4
+        if low <= v_loband2_9 and low > v_loband2
+            v_condition := -1
+            v_condition
+        else if low <= v_loband2 and low > v_loband2_1
+            v_condition := -2
+            v_condition
+        else if low <= v_loband2_1
+            v_condition := -3
+            v_condition
+        else if close >= v_meanline + v_meanrange
+            v_condition := -4
+            v_condition
+        else
+            v_condition := -5
+            v_condition
+
+    [v_meanline, v_meanrange, v_upband1, v_loband1, v_upband2, v_loband2, v_condition]
+
+//*************************************************************************************************
+// MACD Oscilation Function
+//*************************************************************************************************
+MACD_OscilationType(_macdoscilation) =>
+    var float fastMACD = na
+    var float slowMACD = na
+    if _macdoscilation == 'EMA'
+        fastMACD := ta.ema(close, macd_fastlength)
+        slowMACD := ta.ema(close, macd_slowlength)
+    if _macdoscilation == 'SMA'
+        fastMACD := ta.sma(close, macd_fastlength)
+        slowMACD := ta.sma(close, macd_slowlength)
+    [fastMACD, slowMACD]
+
+//*************************************************************************************************
+// Bonus Indicator
+//*************************************************************************************************
+Bonus_Indicator(_bonusindicator, _bonusindicatorlength) =>
+    var float EMA = na
+
+    if _bonusindicator == 'None'
+        EMA := na
+    if _bonusindicator == 'EMA'
+        EMA := ta.ema(close, bonusindicatorlength)
+
+    [EMA]
+//-----------------------
+// Chart Drawing Function
+//-----------------------
+format_price(x) =>
+    y = str.tostring(x, '0.00000')
+    if x > 10
+        y := str.tostring(x, '0.000')
+        y
+    if x > 1000
+        y := str.tostring(x, '0.00')
+        y
+    y
+
+f_PriceLine(_ref, linecol) =>
+    line.new(x1=bar_index, x2=bar_index - 1, y1=_ref, y2=_ref, extend=extend.left, color=linecol)
+
+//************************************************************************************************************
+// Calculate Channel
+//************************************************************************************************************
+var tf_0 = timeframe.period
+var tf_1 = get_tf(1)
+var tf_2 = get_tf(2)
+[meanline, meanrange, upband1, loband1, upband2, loband2, condition] = get_mrc()
+
+[fastMACD, slowMACD] = MACD_OscilationType(macdoscilation)     
+
+[EMA] = Bonus_Indicator(bonusindicator, bonusindicatorlength)
+
+//************************************************************************************************************
+// Drawing Start {
+//************************************************************************************************************
+float p_meanline = drawchannel ? meanline            : na
+float p_upband1  = drawchannel ? upband1             : na
+float p_loband1  = drawchannel ? loband1             : na
+float p_upband2  = drawchannel ? upband2             : na
+float p_loband2  = drawchannel ? loband2             : na
+float p_EMA      = EMA
+float p_macdfast = useMACD     ? fastMACD            : na 
+float p_macdslow = useMACD     ? slowMACD            : na
+
+z = plot(p_meanline, color=color.new(color.yellow, 0), style=plot.style_line, title=' Mean', linewidth=2)
+x1 = plot(p_upband1, color=color.new(color.green, 50), style=plot.style_circles, title=' R1', linewidth=1)
+x2 = plot(p_loband1, color=color.new(color.green, 50), style=plot.style_circles, title=' S1', linewidth=1)
+y1 = plot(p_upband2, color=color.new(color.red, 50), style=plot.style_line, title=' R2', linewidth=1)
+y2 = plot(p_loband2, color=color.new(color.red, 50), style=plot.style_line, title=' S2', linewidth=1)
+plot(EMA, color=color.new(color.silver, 0) , linewidth=2, title='EMA')
+plot(p_macdfast, color=color.new(color.blue, 50), style=plot.style_line, title='MACD', linewidth=1)
+plot(p_macdslow, color=color.new(color.black, 50), style=plot.style_line, title='MACD', linewidth=1)
+
+// Calculating Stop Conditions
+stopDistanceLong   = buyPriceLong  > 0 ? ((buyPriceLong - close) / close) : na
+stopDistanceShort  = buyPriceShort > 0 ? ((close - buyPriceShort) / close) : na
+stopLong           = buyPriceLong  > 0 ? (buyPriceLong - (buyPriceLong * i_stopPercent)) : na
+stopShort          = buyPriceShort > 0 ? (buyPriceShort + (buyPriceShort * i_stopPercent)) : na
+stopConditionLong  = buyPriceLong  > 0 ? stopDistanceLong > i_stopPercent : na
+stopConditionShort = buyPriceShort > 0 ? stopDistanceShort > i_stopPercent : na
+
+// Calculating Take Profits
+takeprofitLongDistance   = buyPriceLong  > 0 ? ((close - buyPriceLong) / buyPriceLong) : na
+takeProfitShortDistance  = buyPriceShort > 0 ? ((buyPriceShort - close) / buyPriceShort) : na
+takeProfitLong           = buyPriceLong  > 0 ? (buyPriceLong + (buyPriceLong * i_takePercent)) : na
+takeProfitShort          = buyPriceShort > 0 ? (buyPriceShort - (buyPriceShort * i_takePercent)) : na
+takeProfitConditionLong  = buyPriceLong  > 0 ? takeprofitLongDistance > i_takePercent : na
+takeProfitConditionshort = buyPriceShort > 0 ? takeProfitShortDistance> i_takePercent : na
+
+//************************************************************************************************************
+// Buy and Sell Signals
+//************************************************************************************************************
+macdlong     = useMACD ? ta.cross(fastMACD, slowMACD)      : na
+macdlongexit = useMACD ? ta.crossover(slowMACD, fastMACD)  : na
+macdshort    = useMACD ? ta.cross(slowMACD, fastMACD)      : na
+macdshortexit= useMACD ? ta.crossunder(fastMACD, slowMACD) : na
+
+
+longCondition = ta.crossover(close, p_loband2) and close[1] < p_loband2[1] 
+longExit      = close > p_meanline or (useStopLoss ? stopConditionLong : na) or (useTakeProfit ? takeProfitConditionLong : na)
+shortCondition= ta.crossunder(close, p_upband2) and (close[1] > p_upband2[1]) 
+shortExit     = close < p_meanline or (useStopLoss ? stopConditionShort : na) or (useTakeProfit ? takeProfitConditionshort : na) 
+
+
+if longCondition
+    strategy.entry("Long", strategy.long)
+
+if longCondition[1]
+    buyPriceLong := open
+    buyPriceShort:= na
+
+if longExit
+    strategy.close("Long", comment="Long Exit" + (stopConditionLong ? " SL=true" : "") + (takeProfitConditionLong ? " TP=true" : "") )
+    buyPriceLong := na
+    buyPriceShort:= na
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+
+if shortCondition[1]
+    buyPriceLong := na
+    buyPriceShort:= open
+
+if shortExit
+    strategy.close("Short", comment="Short Exit" + (stopConditionShort ? " SL=true" : "") + (takeProfitConditionshort ? " TP=true" : "") )
+    buyPriceLong := na
+    buyPriceShort:= na
+
+
+

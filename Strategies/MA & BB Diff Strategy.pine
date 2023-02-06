@@ -1,0 +1,89 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("MA & BB Diff Strategy", overlay=true, currency = currency.USD, initial_capital=10, default_qty_type=strategy.cash, default_qty_value=100, commission_type = strategy.commission.cash_per_order, commission_value = 0.1)
+
+var float buyPriceLong  = 0
+var float buyPriceShort = 0
+
+// Define variables for moving averages
+fastLength = input(title="Fast Length", defval=12)
+slowLength = input(title="Slow Length", defval=26)
+
+// Define variables for Bollinger Bands
+bbLength = input.int(title="BB Length", defval=20)
+bbDeviation = input.float(title="BB Deviation", defval=2)
+
+// Stop Loss Percent
+i_stopPercent   = input.float(title = "Stop Loss Percent", defval = 0.002, step = 0.001, group = "strategy Parameters", tooltip = "Failsafe Stop")
+i_takeProfit    = input.float(title = "Take Profit Percent", defval = 0.01, step = 0.001, group = "Strategy Parameters", tooltip = "Failsafe Take Profit")
+
+// Calculating Stop Conditions
+stopDistanceLong   = buyPriceLong  > 0 ? ((buyPriceLong - close) / close) : na
+stopDistanceShort  = buyPriceShort > 0 ? ((close - buyPriceShort) / close) : na
+stopLong           = buyPriceLong  > 0 ? (buyPriceLong - (buyPriceLong * i_stopPercent)) : na
+stopShort          = buyPriceShort > 0 ? (buyPriceShort + (buyPriceShort * i_stopPercent)) : na
+stopConditionLong  = buyPriceLong  > 0 ? stopDistanceLong > i_stopPercent : na
+stopConditionShort = buyPriceShort > 0 ? stopDistanceShort > i_stopPercent : na
+
+// Calculating Take Profits
+
+takeprofitLongDistance   = buyPriceLong  > 0 ? ((close - buyPriceLong) / buyPriceLong) : na
+takeProfitShortDistance  = buyPriceShort > 0 ? ((buyPriceShort - close) / buyPriceShort) : na
+takeProfitLong           = buyPriceLong  > 0 ? (buyPriceLong + (buyPriceLong * i_takeProfit)) : na
+takeProfitShort          = buyPriceShort > 0 ? (buyPriceShort - (buyPriceShort * i_takeProfit)) : na
+takeProfitConditionLong  = buyPriceLong  > 0 ? takeprofitLongDistance > i_takeProfit : na
+takeProfitConditionshort = buyPriceShort > 0 ? takeProfitShortDistance> i_takeProfit : na
+
+
+// Calculate Moving Averages
+fastMA = ta.sma(close, fastLength)
+slowMA = ta.sma(close, slowLength)
+
+// Calculate Bollinger Bands
+bbUpper = ta.sma(close, bbLength) + bbDeviation * ta.stdev(close, bbLength)
+bbLower = ta.sma(close, bbLength) - bbDeviation * ta.stdev(close, bbLength)
+
+//Trade conditions
+longCondition  = ta.cross(fastMA, slowMA)  and ta.cross(close, bbLower)
+longExit       = ta.crossover(slowMA, fastMA)  or ta.crossover(close, bbUpper) or stopConditionLong or takeProfitConditionLong
+shortCondition = ta.cross(close, bbUpper)  and ta.cross(slowMA, fastMA)
+shortExit      = ta.crossunder(close, bbLower) or ta.crossover(fastMA, slowMA) or stopConditionShort or takeProfitConditionshort
+
+// Buy rule 1: When fast MA crosses above slow MA
+if longCondition
+    strategy.entry("Long", strategy.long) 
+
+if longCondition[1]
+    buyPriceLong := open
+    buyPriceShort:= na
+
+// Sell rule 1: When fast MA crosses below slow MA
+if longExit
+    strategy.close(id = "Long", comment = "Long Exit" + (stopConditionLong ? "SL=true" : "") + (takeProfitConditionLong ? "TP=true" : ""))
+    buyPriceLong := na
+    buyPriceShort:= na
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+
+if shortCondition[1]
+    buyPriceShort:= open
+    buyPriceLong := na
+
+if shortExit
+    strategy.close(id = "Short", comment = "Short Exit" + (stopConditionShort ? "SL=true" : "") + (takeProfitConditionshort ? "TP=true" : ""))
+    buyPriceShort:= na
+    buyPriceLong := na
+
+
+// Plot the Moving Averages and Bollinger Bands on the chart
+//plot(fastMA, title="Fast MA", color=color.blue, linewidth=1)
+//plot(slowMA, title="Slow MA", color=color.red, linewidth=1)
+//plot(bbUpper, title="BB Upper Band", color=color.red, linewidth=1)
+//plot(bbLower, title="BB Lower Band", color=color.green, linewidth=1)
+plot(stopLong, color = color.yellow, style = plot.style_linebr, offset = -1)
+plot(stopShort,color = color.yellow, style = plot.style_linebr, offset = -1)
+plot(takeProfitLong, color = color.green, style = plot.style_linebr, offset = -1)
+plot(takeProfitShort,color = color.green, style = plot.style_linebr, offset = -1)

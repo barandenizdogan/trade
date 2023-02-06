@@ -1,0 +1,23 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("MA Crossover", overlay=true, currency = currency.USD, initial_capital=10, default_qty_type=strategy.cash, default_qty_value=100, commission_type = strategy.commission.cash_per_order, commission_value = 0.1)
+
+fastLength = input.int(title="Fast MA Length", defval=10)
+slowLength = input.int(title="Slow MA Length", defval=30)
+
+// Calculate the fast and slow moving averages
+fastMA = ta.sma(close, fastLength)
+slowMA = ta.sma(close, slowLength)
+
+// Buy when fast moving average crosses above slow moving average
+if ta.crossover(fastMA, slowMA)
+    strategy.entry("Long", strategy.long)
+
+// Sell when fast moving average crosses below slow moving averag
+if ta.crossunder(fastMA, slowMA)
+    strategy.close("Long", comment = "Exit")
+
+plot(fastMA, title="Fast MA", color=color.orange, linewidth=1)
+plot(slowMA, title="Slow MA", color=color.blue, linewidth=1)

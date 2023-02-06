@@ -1,0 +1,27 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("Bollingger Bands", overlay=true, margin_long=100, margin_short=100)
+
+// Define the length of the moving average
+length = input.int(title="Length", defval=20)
+
+// Define the number of standard deviations
+deviations = input.float(title="Deviations", defval=2.0)
+
+// Calculate the moving average
+ma = ta.sma(close, length)
+
+// Calculate the standard deviation
+stddev = ta.stdev(close, length)
+
+// Calculate the upper band
+upperBand = ma + deviations * stddev
+
+// Calculate the lower band
+lowerBand = ma - deviations * stddev
+
+// Plot the upper and lower bands on the chart
+plot(upperBand, color=color.red, linewidth=2, title="Upper Band")
+plot(lowerBand, color=color.red, linewidth=2, title="Lower Band")

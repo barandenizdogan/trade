@@ -1,0 +1,75 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("RSI&BB", overlay=true, currency = currency.USD, initial_capital=10, default_qty_type=strategy.cash, default_qty_value=100, commission_type = strategy.commission.cash_per_order, commission_value = 0.1)
+
+var float buyPriceLong  = 0
+var float buyPriceShort = 0
+
+i_stopPercent   = input.float(title="Stop Loss", defval=0.002, step=0.001, group="Strategy Parameters", tooltip="Stop Loss")
+i_takeProfit = input.float(title = "Take Profit Percent", defval = 0.01, step = 0.001, group = "Strategy Parameters", tooltip = "Failsafe Take Profit")
+
+rsiLength = input.int(title="RSI Length", defval=14)
+bbLength = input.int(title="Bollinger Band Length", defval=20)
+k = input.float(title="Standard Deviation", defval=2)
+rsiThreshold = input.int(title="RSI Threshold", defval=50)
+
+rsi = ta.rsi(close, rsiLength)
+
+upperBand = ta.sma(close, bbLength) + k * ta.stdev(close, bbLength)
+lowerBand = ta.sma(close, bbLength) - k * ta.stdev(close, bbLength)
+
+// Calculating Stop Conditions
+stopDistanceLong   = buyPriceLong  > 0 ? ((buyPriceLong - close) / close) : na
+stopDistanceShort  = buyPriceShort > 0 ? ((close - buyPriceShort) / close) : na
+stopLong           = buyPriceLong  > 0 ? (buyPriceLong - (buyPriceLong * i_stopPercent)) : na
+stopShort          = buyPriceShort > 0 ? (buyPriceShort + (buyPriceShort * i_stopPercent)) : na
+stopConditionLong  = buyPriceLong  > 0 ? stopDistanceLong > i_stopPercent : na
+stopConditionShort = buyPriceShort > 0 ? stopDistanceShort > i_stopPercent : na
+
+// Calculating Take Profits
+
+takeprofitLongDistance   = buyPriceLong  > 0 ? ((close - buyPriceLong) / buyPriceLong) : na
+takeProfitShortDistance  = buyPriceShort > 0 ? ((buyPriceShort - close) / buyPriceShort) : na
+takeProfitLong           = buyPriceLong  > 0 ? (buyPriceLong + (buyPriceLong * i_takeProfit)) : na
+takeProfitShort          = buyPriceShort > 0 ? (buyPriceShort - (buyPriceShort * i_takeProfit)) : na
+takeProfitConditionLong  = buyPriceLong  > 0 ? takeprofitLongDistance > i_takeProfit : na
+takeProfitConditionshort = buyPriceShort > 0 ? takeProfitShortDistance> i_takeProfit : na
+
+
+longCondition = rsi < rsiThreshold and ta.cross(close, lowerBand)
+longExit= ta.crossover(upperBand, close) or rsi > rsiThreshold or takeProfitConditionLong or stopConditionLong
+shortCondition = rsi > rsiThreshold and ta.cross(upperBand, close)
+shortExit = ta.crossunder(close, lowerBand) or rsi < rsiThreshold or takeProfitConditionshort or stopConditionShort
+
+if longCondition
+    strategy.entry("Long", strategy.long)
+
+if longCondition[1]
+    buyPriceLong  := open
+    buyPriceShort := na
+
+if longExit
+    strategy.close("Long", comment = "Long Exit" + (takeProfitConditionLong ? "TP=true" : na) + (stopConditionLong ? "SL=true" : na))
+    buyPriceLong  := na
+    buyPriceShort := na
+
+if shortCondition
+    strategy.entry("Short", strategy.short)
+
+if shortCondition[1]
+    buyPriceLong  := na
+    buyPriceShort := open
+if shortExit
+    strategy.close("Short", comment = "Short Exit" + (takeProfitConditionshort ? "TP=true" : na) + (stopConditionShort ? "SL=true" : na))
+    buyPriceLong  := na
+    buyPriceShort := na
+
+plot(upperBand, color = color.red, style = plot.style_linebr, offset = -1)
+plot(lowerBand, color = color.blue, style = plot.style_linebr, offset = -1)
+plot(rsi, color = color.green, style = plot.style_linebr, offset = -1)
+plot(stopLong, color = color.yellow, style = plot.style_linebr, offset = -1)
+plot(stopShort,color = color.yellow, style = plot.style_linebr, offset = -1)
+plot(takeProfitLong, color = color.green, style = plot.style_linebr, offset = -1)
+plot(takeProfitShort,color = color.green, style = plot.style_linebr, offset = -1)

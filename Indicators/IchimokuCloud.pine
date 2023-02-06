@@ -1,0 +1,20 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("IchimokuCloud", overlay=true, margin_long=100, margin_short=100)
+
+tenkanLength = input.int(9, title="Tenkan Length")
+kijunLength = input.int(26, title="Kijun Length")
+senkouLength = input.int(52, title="Senkou Length")
+
+tenkan  = ta.ema(high, tenkanLength) + ta.ema(low, tenkanLength) / 2
+kijun   = ta.ema(high, kijunLength) + ta.ema(low, kijunLength) / 2
+senkouA = (tenkan + kijun) / 2
+senkouB = ta.ema(high, senkouLength) + ta.ema(low, senkouLength) / 2
+
+p1 = plot(senkouA, color=color.yellow, title="Senkou A", linewidth=2)
+p2 = plot(senkouB, color=color.orange, title="Senkou B", linewidth=2)
+fill(p1, p2, color=color.gray, title="Ichimoku Cloud")
+plot(tenkan, color=color.green, title="Tenkan", linewidth=2)
+plot(kijun, color=color.red, title="Kijun", linewidth=2)

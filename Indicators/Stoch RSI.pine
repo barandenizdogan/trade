@@ -1,0 +1,28 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("StochRSI", overlay=true, margin_long=100, margin_short=100)
+
+// Define the length of the RSI and StochRSI
+length = input.int(title="Length", defval=14)
+
+// Calculate the gain and loss over the defined length
+Gain = ta.change(close) > 0 ? close - close[1] : 0
+Loss = ta.change(close) < 0 ? close[1] - close : 0
+
+// Calculate the average gain and average loss over the defined length
+avgGain = ta.sma(Gain, length)
+avgLoss = ta.sma(Loss, length)
+
+// Calculate the relative strength
+relStrength = avgGain / avgLoss
+
+// Calculate the RSI
+rsi = 100 - (100 / (1 + relStrength))
+
+// Calculate the StochRSI
+stochRSI = (rsi - ta.lowest(rsi, length)) / (ta.highest(rsi, length) - ta.lowest(rsi, length))
+
+// Plot the StochRSI on the chart
+plot(stochRSI, color=color.blue, linewidth=2, title="StochRSI")

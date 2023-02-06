@@ -1,0 +1,25 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © barandenizdogan
+
+//@version=5
+strategy("Fast/Slow MA",overlay=true, currency = currency.USD, initial_capital=10, default_qty_type=strategy.cash, default_qty_value=100, commission_type = strategy.commission.cash_per_order, commission_value = 0.1)
+
+// Define the length of the fast MA
+fastLength = input.int(title="Fast Length", defval=7)
+// Define the length of the slow MA
+slowLength = input.int(title="Slow Length", defval=21)
+
+fastMA = ta.sma(close, fastLength)
+slowMA = ta.sma(close, slowLength)
+
+buyCondition = fastMA > slowMA
+sellCondition = fastMA < slowMA
+
+if buyCondition
+    strategy.entry("Buy", strategy.long)
+if sellCondition
+    strategy.entry("Sell", strategy.short. comment = "Exit")
+
+plot(fastMA, color=color.green, linewidth=2, title="Fast MA")
+plot(slowMA, color=color.red, linewidth=2, title="Slow MA")
+
